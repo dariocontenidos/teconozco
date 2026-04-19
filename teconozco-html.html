@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>teconozco</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{min-height:100vh;background:#f5f0e8;font-family:'Lora',serif;color:#2d2318}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#f5f0e8}::-webkit-scrollbar-thumb{background:#c8b89a;border-radius:3px}
+input,textarea,select{font-family:'Lora',serif}
+.ch{transition:transform .2s,box-shadow .2s;cursor:pointer}.ch:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(90,60,30,.15)}
+.bp{background:#2d2318;color:#f5f0e8;border:none;padding:12px 28px;border-radius:2px;font-family:'Lora',serif;font-size:.95rem;cursor:pointer;letter-spacing:.5px;transition:background .2s}.bp:hover{background:#4a3828}
+.bg{background:transparent;border:1.5px solid #c8b89a;color:#5a4a3a;padding:10px 22px;border-radius:2px;font-family:'Lora',serif;font-size:.9rem;cursor:pointer;transition:all .2s}.bg:hover{background:#ede8df}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#8b6a3e!important}
+@keyframes fi{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}.fi{animation:fi .3s ease forwards}
+#header{position:sticky;top:0;z-index:10;background:#2d2318;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:60px;box-shadow:0 2px 12px rgba(0,0,0,.2)}
+#logo{cursor:pointer;display:flex;align-items:baseline;gap:8px}
+#logo span:first-child{font-family:'Playfair Display',serif;font-size:1.5rem;color:#f5f0e8;font-style:italic}
+#logo span:last-child{font-family:'Playfair Display',serif;font-size:1.5rem;color:#c8a96e;font-weight:700}
+#wrap{max-width:600px;margin:0 auto;padding:24px 16px}
+.lbl{font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;display:block;margin-bottom:6px}
+.inp{width:100%;padding:12px 14px;border:1.5px solid #d6cfc4;border-radius:2px;background:#faf7f2;font-size:1rem;color:#2d2318}
+.card{background:#faf7f2;border:1px solid #e0d8cc;border-radius:4px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:flex-start;gap:16px}
+.avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;opacity:.85}
+.back-btn{background:none;border:none;color:#8b6a3e;cursor:pointer;margin-bottom:20px;font-size:.9rem;display:flex;align-items:center;gap:6px;font-family:'Lora',serif}
+.star-btn{background:none;border:none;cursor:pointer;font-size:1rem;transition:color .2s;line-height:1;padding:0}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div id="logo" onclick="goList()">
+    <span>te</span><span>conozco</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span id="saving-lbl" style="display:none;font-size:.75rem;color:#c8a96e;letter-spacing:1px">✦ guardando…</span>
+    <button onclick="goView('cats')" style="background:none;border:none;color:#c8b89a;cursor:pointer;font-size:.82rem;letter-spacing:.5px;font-family:'Lora',serif">⚙ categorías</button>
+    <span id="count-lbl" style="font-size:.8rem;color:#a09080"></span>
+  </div>
+</div>
+
+<div id="wrap"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────
+const STORAGE_KEY = 'tc-people';
+const CAT_KEY     = 'tc-cats';
+
+const DEFAULT_CATS = {
+  'gastronomía':{ icon:'🍽️', color:'#c8a96e' },
+  'trabajo':    { icon:'💼', color:'#7a9e8e' },
+  'vecindad':   { icon:'🏠', color:'#c4846a' },
+  'viaje':      { icon:'✈️', color:'#7a8fb5' },
+  'otro':       { icon:'🌀', color:'#a08db5' },
+};
+const PALETTE = ['#c8a96e','#7a9e8e','#c4846a','#7a8fb5','#a08db5','#8e7ab5','#6a9e8e','#b57a7a','#7ab59e','#b5a06a','#5a8e9e','#9e7a5a'];
+const ICONS   = ['🌀','⚽','🎵','📚','🎨','🏋️','🐾','💡','🤝','🌿','🏖️','🎭','🍺','🎲','📷','🏔️','🎓','🧉','🛠️','🎤'];
+
+let people     = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+let categories = JSON.parse(localStorage.getItem(CAT_KEY)||'null') || {...DEFAULT_CATS};
+let view       = 'list';
+let selected   = null;
+let search     = '';
+let newCat     = { name:'', icon:'🌀', color:'#a08db5' };
+
+function persist(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
+  localStorage.setItem(CAT_KEY,     JSON.stringify(categories));
+  const lbl = document.getElementById('saving-lbl');
+  lbl.style.display='inline';
+  setTimeout(()=>lbl.style.display='none', 900);
+}
+
+const genId = ()=>Math.random().toString(36).slice(2,10);
+const fmtDate = iso=>new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+const catIcon  = k=>( categories[k]||DEFAULT_CATS['otro'] ).icon;
+const catColor = k=>( categories[k]||DEFAULT_CATS['otro'] ).color;
+
+// ── Render dispatcher ──────────────────────────────────
+function render(){
+  document.getElementById('count-lbl').textContent = people.length+' '+(people.length===1?'persona':'personas');
+  const wrap = document.getElementById('wrap');
+  wrap.innerHTML='';
+  wrap.className='fi';
+  if(view==='list')   renderList(wrap);
+  if(view==='form')   renderForm(wrap);
+  if(view==='detail') renderDetail(wrap);
+  if(view==='cats')   renderCats(wrap);
+}
+
+function goList(){ view='list'; selected=null; search=''; render(); }
+function goView(v){ view=v; render(); }
+
+// ── LIST ──────────────────────────────────────────────
+function renderList(wrap){
+  const filtered = people.filter(p=>
+    p.name.toLowerCase().includes(search.toLowerCase())||
+    p.place.toLowerCase().includes(search.toLowerCase())
+  );
+
+  wrap.innerHTML=`
+    <div style="display:flex;gap:10px;margin-bottom:24px">
+      <input id="srch" class="inp" placeholder="Buscar por nombre o lugar…" value="${esc(search)}" style="flex:1"/>
+      <button class="bp" onclick="goView('form')" style="white-space:nowrap">+ Nueva</button>
+    </div>
+    <div id="cards"></div>
+  `;
+  document.getElementById('srch').addEventListener('input',e=>{ search=e.target.value; renderList(wrap); });
+
+  const cards = document.getElementById('cards');
+  if(!filtered.length){
+    cards.innerHTML=`<div style="text-align:center;padding:60px 20px;color:#9a8878">
+      <div style="font-size:3rem;margin-bottom:16px">👤</div>
+      <div style="font-family:'Playfair Display',serif;font-size:1.2rem;font-style:italic;margin-bottom:8px">
+        ${people.length===0?'Tu memoria social está esperando':'Sin resultados'}
+      </div>
+      <div style="font-size:.9rem">${people.length===0?'Registrá la primera persona que querés recordar':'Probá con otro nombre o lugar'}</div>
+    </div>`;
+    return;
+  }
+
+  filtered.forEach(person=>{
+    const lastNote = person.notes.length ? `<div style="font-size:.88rem;color:#5a4a3a;margin-top:6px;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">"${esc(person.notes[person.notes.length-1].text)}"</div>` : '';
+    const div = document.createElement('div');
+    div.className='card ch';
+    div.style.borderLeft=`4px solid ${catColor(person.category)}`;
+    div.innerHTML=`
+      <div class="avatar" style="background:${catColor(person.category)}">${catIcon(person.category)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-family:'Playfair Display',serif;font-size:1.1rem;font-weight:700">${esc(person.name)}</span>
+          <span style="font-size:.75rem;color:#9a8878;margin-left:8px;white-space:nowrap">${fmtDate(person.createdAt)}</span>
+        </div>
+        ${person.place?`<div style="font-size:.82rem;color:#7a6a5a;margin-top:2px">📍 ${esc(person.place)}</div>`:''}
+        ${lastNote}
+        <div style="font-size:.75rem;color:#c8b89a;margin-top:4px">${person.notes.length} ${person.notes.length===1?'nota':'notas'}</div>
+      </div>
+    `;
+    div.onclick=()=>{ selected=person; view='detail'; render(); };
+    cards.appendChild(div);
+  });
+}
+
+// ── FORM ──────────────────────────────────────────────
+function renderForm(wrap){
+  const catOptions = Object.entries(categories).map(([k,v])=>`<option value="${k}">${v.icon} ${cap(k)}</option>`).join('');
+  wrap.innerHTML=`
+    <button class="back-btn" onclick="goList()">← Volver</button>
+    <div style="font-family:'Playfair Display',serif;font-size:1.6rem;font-style:italic;margin-bottom:6px">Nueva persona</div>
+    <div style="font-size:.88rem;color:#9a8878;margin-bottom:28px">30 segundos. Lo demás se construye solo.</div>
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div><label class="lbl">Nombre *</label><input id="f-name" class="inp" placeholder="¿Cómo se llama?" autofocus/></div>
+      <div><label class="lbl">Lugar / Contexto</label><input id="f-place" class="inp" placeholder="Ej: La Trattoria, Belgrano / Reunión Superfechas"/></div>
+      <div>
+        <label class="lbl">Categoría</label>
+        <select id="f-cat" class="inp">${catOptions}</select>
+        <button onclick="goView('cats')" style="background:none;border:none;color:#8b6a3e;cursor:pointer;font-size:.8rem;margin-top:6px;text-decoration:underline;font-family:'Lora',serif">+ Crear nueva categoría</button>
+      </div>
+      <div><label class="lbl">Primera nota</label>
+        <textarea id="f-comment" class="inp" rows="4" placeholder="Algo que recordar: qué te contó, cómo fue el trato, qué tiene de especial…" style="resize:vertical;line-height:1.6"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:8px">
+        <button class="bp" onclick="savePerson()" style="flex:1">Guardar persona</button>
+        <button class="bg" onclick="goList()">Cancelar</button>
+      </div>
+    </div>
+  `;
+}
+
+function savePerson(){
+  const name    = document.getElementById('f-name').value.trim();
+  const place   = document.getElementById('f-place').value.trim();
+  const cat     = document.getElementById('f-cat').value;
+  const comment = document.getElementById('f-comment').value.trim();
+  if(!name) return;
+  const person = {
+    id:genId(), name, place, category:cat,
+    createdAt: new Date().toISOString(),
+    notes: comment ? [{ id:genId(), text:comment, date:new Date().toISOString(), starred:false }] : []
+  };
+  people.unshift(person);
+  persist(); goList();
+}
+
+// ── DETAIL ──────────────────────────────────────────────
+function renderDetail(wrap){
+  const p = selected;
+  const starred = p.notes.filter(n=>n.starred);
+
+  const starredHTML = starred.length ? `
+    <div style="margin-top:18px;border-top:1px solid #3d3328;padding-top:14px;display:flex;flex-direction:column;gap:8px">
+      ${starred.map(n=>`
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <span style="color:#c8a96e;font-size:1rem;margin-top:1px;flex-shrink:0">★</span>
+          <span style="font-size:.9rem;color:#e8dfd0;line-height:1.55;font-style:italic">${esc(n.text)}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  const notesHTML = p.notes.length===0
+    ? `<div style="text-align:center;padding:24px;color:#9a8878;font-size:.9rem;font-style:italic;background:#faf7f2;border-radius:4px;border:1px dashed #d6cfc4">Todavía no hay notas. ¡Agregá la primera!</div>`
+    : p.notes.map((n,i)=>`
+      <div style="display:flex;gap:14px;margin-bottom:14px">
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <div style="width:10px;height:10px;border-radius:50%;background:${i===p.notes.length-1?'#c8a96e':'#d6cfc4'};flex-shrink:0;margin-top:4px"></div>
+          ${i<p.notes.length-1?'<div style="width:1px;flex:1;background:#e0d8cc;margin-top:4px"></div>':''}
+        </div>
+        <div style="flex:1;background:${n.starred?'#fdf8ef':'#faf7f2'};border:1px solid ${n.starred?'#c8a96e':'#e0d8cc'};border-radius:4px;padding:12px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-size:.75rem;color:#9a8878">${fmtDate(n.date)}</span>
+            <button class="star-btn" onclick="toggleStar('${n.id}')" title="${n.starred?'Quitar destacado':'Destacar'}" style="color:${n.starred?'#c8a96e':'#d6cfc4'}">${n.starred?'★':'☆'}</button>
+          </div>
+          <div style="font-size:.95rem;line-height:1.6">${esc(n.text)}</div>
+        </div>
+      </div>`).join('');
+
+  wrap.innerHTML=`
+    <button class="back-btn" onclick="goList()">← Volver</button>
+    <div style="background:#2d2318;border-radius:4px;padding:28px 24px;margin-bottom:20px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-20px;right:-20px;font-size:6rem;opacity:.08;line-height:1">${catIcon(p.category)}</div>
+      <div style="font-size:.75rem;letter-spacing:2px;color:#c8a96e;text-transform:uppercase;margin-bottom:8px">${esc(p.category)}</div>
+      <div style="font-family:'Playfair Display',serif;font-size:2rem;color:#f5f0e8;font-weight:700;margin-bottom:6px">${esc(p.name)}</div>
+      ${p.place?`<div style="font-size:.9rem;color:#c8b89a">📍 ${esc(p.place)}</div>`:''}
+      <div style="font-size:.78rem;color:#6a5a4a;margin-top:6px">Conocido el ${fmtDate(p.createdAt)}</div>
+      ${starredHTML}
+    </div>
+
+    <div style="margin-bottom:24px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:14px">Historial de notas</div>
+      ${notesHTML}
+    </div>
+
+    <div style="background:#faf7f2;border:1.5px solid #d6cfc4;border-radius:4px;padding:18px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:10px">Agregar nota</div>
+      <textarea id="new-note" class="inp" rows="3" placeholder="¿Algo nuevo sobre ${esc(p.name)}?" style="resize:vertical;line-height:1.6;margin-bottom:10px"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:#9a8878">Ctrl+Enter para guardar</span>
+        <button class="bp" onclick="addNote()">Guardar nota</button>
+      </div>
+    </div>
+
+    <div style="text-align:center;margin-top:32px">
+      <button onclick="deletePerson('${p.id}')" style="background:none;border:none;color:#c4846a;cursor:pointer;font-size:.82rem;text-decoration:underline;font-family:'Lora',serif">Eliminar persona</button>
+    </div>
+  `;
+
+  document.getElementById('new-note').addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)) addNote();
+  });
+}
+
+function addNote(){
+  const txt = document.getElementById('new-note').value.trim();
+  if(!txt||!selected) return;
+  const note = { id:genId(), text:txt, date:new Date().toISOString(), starred:false };
+  selected.notes.push(note);
+  const idx = people.findIndex(p=>p.id===selected.id);
+  if(idx>=0) people[idx]=selected;
+  persist(); renderDetail(document.getElementById('wrap'));
+}
+
+function toggleStar(noteId){
+  if(!selected) return;
+  selected.notes = selected.notes.map(n=>n.id===noteId?{...n,starred:!n.starred}:n);
+  const idx = people.findIndex(p=>p.id===selected.id);
+  if(idx>=0) people[idx]=selected;
+  persist(); renderDetail(document.getElementById('wrap'));
+}
+
+function deletePerson(id){
+  if(!confirm('¿Eliminar esta persona?')) return;
+  people = people.filter(p=>p.id!==id);
+  persist(); goList();
+}
+
+// ── CATS ──────────────────────────────────────────────
+function renderCats(wrap){
+  const catList = Object.entries(categories).map(([k,v])=>`
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:#faf7f2;border:1px solid #e0d8cc;border-radius:4px;margin-bottom:8px;border-left:4px solid ${v.color}">
+      <span style="font-size:1.3rem">${v.icon}</span>
+      <span style="flex:1;font-family:'Playfair Display',serif;font-size:1rem">${cap(k)}</span>
+      <span style="width:20px;height:20px;border-radius:50%;background:${v.color};display:inline-block;border:2px solid #e0d8cc"></span>
+      ${!DEFAULT_CATS[k]
+        ? `<button onclick="deleteCat('${k}')" style="background:none;border:none;color:#c4846a;cursor:pointer;font-size:.8rem;margin-left:4px;font-family:'Lora',serif">✕</button>`
+        : `<span style="font-size:.7rem;color:#c8b89a">default</span>`}
+    </div>`).join('');
+
+  const iconBtns = ICONS.map(ic=>`
+    <button onclick="setNewCatIcon('${ic}')" id="ic-${ic}" style="width:36px;height:36px;border-radius:4px;border:${newCat.icon===ic?'2px solid #2d2318':'1.5px solid #d6cfc4'};background:${newCat.icon===ic?'#ede8df':'#f5f0e8'};cursor:pointer;font-size:1.1rem;display:inline-flex;align-items:center;justify-content:center">${ic}</button>`).join('');
+
+  const colorBtns = PALETTE.map(cl=>`
+    <button onclick="setNewCatColor('${cl}')" style="width:28px;height:28px;border-radius:50%;background:${cl};border:${newCat.color===cl?'3px solid #2d2318':'2px solid transparent'};cursor:pointer"></button>`).join('');
+
+  wrap.innerHTML=`
+    <button class="back-btn" onclick="goList()">← Volver</button>
+    <div style="font-family:'Playfair Display',serif;font-size:1.6rem;font-style:italic;margin-bottom:4px">Categorías</div>
+    <div style="font-size:.88rem;color:#9a8878;margin-bottom:24px">Organizá tus personas como quieras.</div>
+    <div style="margin-bottom:28px">${catList}</div>
+
+    <div style="background:#faf7f2;border:1.5px solid #d6cfc4;border-radius:4px;padding:20px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:14px">Nueva categoría</div>
+      <input id="nc-name" class="inp" placeholder="Nombre (ej: deporte, familia…)" value="${esc(newCat.name)}" oninput="newCat.name=this.value;updatePreview()" style="margin-bottom:14px"/>
+      <div style="margin-bottom:14px">
+        <div style="font-size:.78rem;color:#7a6a5a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Ícono</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${iconBtns}</div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div style="font-size:.78rem;color:#7a6a5a;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Color</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px">${colorBtns}</div>
+      </div>
+      <div id="cat-preview" style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:#ede8df;border-radius:4px;margin-bottom:16px;border-left:4px solid ${newCat.color}">
+        <span style="font-size:1.2rem">${newCat.icon}</span>
+        <span style="font-family:'Playfair Display',serif;font-size:.95rem;color:#2d2318;font-style:italic">${newCat.name||'Vista previa…'}</span>
+      </div>
+      <button class="bp" onclick="addCat()" style="width:100%">Crear categoría</button>
+    </div>
+  `;
+}
+
+function updatePreview(){
+  const p = document.getElementById('cat-preview');
+  if(p) p.innerHTML=`<span style="font-size:1.2rem">${newCat.icon}</span><span style="font-family:'Playfair Display',serif;font-size:.95rem;color:#2d2318;font-style:italic">${newCat.name||'Vista previa…'}</span>`;
+}
+function setNewCatIcon(ic){ newCat.icon=ic; renderCats(document.getElementById('wrap')); }
+function setNewCatColor(cl){ newCat.color=cl; renderCats(document.getElementById('wrap')); }
+function addCat(){
+  const key = newCat.name.trim().toLowerCase().replace(/\s+/g,'-');
+  if(!key||categories[key]) return;
+  categories[key]={ icon:newCat.icon, color:newCat.color };
+  newCat={ name:'', icon:'🌀', color:'#a08db5' };
+  persist(); renderCats(document.getElementById('wrap'));
+}
+function deleteCat(key){
+  if(DEFAULT_CATS[key]) return;
+  delete categories[key];
+  persist(); renderCats(document.getElementById('wrap'));
+}
+
+// ── Helpers ──────────────────────────────────────────
+function esc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
+
+// ── Init ────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
