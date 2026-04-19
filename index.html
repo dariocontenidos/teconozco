@@ -27,6 +27,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:#8b6a3e!import
 .avatar{width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0;opacity:.85}
 .back-btn{background:none;border:none;color:#8b6a3e;cursor:pointer;margin-bottom:20px;font-size:.9rem;display:flex;align-items:center;gap:6px;font-family:'Lora',serif}
 .star-btn{background:none;border:none;cursor:pointer;font-size:1rem;transition:color .2s;line-height:1;padding:0}
+@keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -37,6 +38,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:#8b6a3e!import
   </div>
   <div style="display:flex;align-items:center;gap:14px">
     <span id="saving-lbl" style="display:none;font-size:.75rem;color:#c8a96e;letter-spacing:1px">✦ guardando…</span>
+    <span id="sync-lbl" style="font-size:.75rem;color:#c8a96e;letter-spacing:.5px;display:none">☁</span>
     <button onclick="goView('cats')" style="background:none;border:none;color:#c8b89a;cursor:pointer;font-size:.82rem;letter-spacing:.5px;font-family:'Lora',serif">⚙ categorías</button>
     <span id="count-lbl" style="font-size:.8rem;color:#a09080"></span>
   </div>
@@ -44,7 +46,86 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:#8b6a3e!import
 
 <div id="wrap"></div>
 
+<!-- MODAL IMPORTAR -->
+<div id="import-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;display:none;align-items:flex-end;justify-content:center;">
+  <div style="background:#faf7f2;border-radius:8px 8px 0 0;padding:28px 24px;width:100%;max-width:600px;display:flex;flex-direction:column;gap:14px;">
+    <div style="font-family:'Playfair Display',serif;font-size:1.3rem;font-style:italic;">🔗 Importar mis datos</div>
+    <p style="font-size:.88rem;color:#7a6a5a;line-height:1.55;">Ingresá el código de sincronización de tu otro dispositivo.</p>
+    <input id="import-code-inp" class="inp" placeholder="tc_abc123..." style="font-family:monospace;font-size:.9rem;"/>
+    <div id="import-msg" style="font-size:.8rem;color:#c4846a;min-height:16px;"></div>
+    <button class="bp" onclick="doImport()">Importar mis datos</button>
+    <button class="bg" onclick="document.getElementById('import-modal').style.display='none'">Cancelar</button>
+  </div>
+</div>
+
 <script>
+// ╔══════════════════════════════════════════╗
+// ║  🔥 FIREBASE CONFIG                      ║
+// ║  Reemplazá esta URL con la tuya          ║
+// ╚══════════════════════════════════════════╝
+const FB_URL = 'https://pulso-app-bb75c-default-rtdb.firebaseio.com/';
+// ^^^^ ÚNICO LUGAR QUE NECESITÁS EDITAR ^^^^
+
+// ── Firebase Helpers ──────────────────────────────────
+const SK_UID = 'tc-uid';
+
+function getUID(){
+  let uid = localStorage.getItem(SK_UID);
+  if(!uid){
+    uid = 'tc_' + Math.random().toString(36).substr(2,9) + Date.now().toString(36);
+    localStorage.setItem(SK_UID, uid);
+  }
+  return uid;
+}
+
+async function fbSave(data){
+  if(!FB_URL || FB_URL.includes('TU-PROYECTO')) return;
+  const lbl = document.getElementById('sync-lbl');
+  if(lbl){ lbl.style.display='inline'; lbl.textContent='☁ sync…'; }
+  try{
+    await fetch(`${FB_URL}/teconozco/${getUID()}.json`,{
+      method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(data)
+    });
+    if(lbl){ lbl.textContent='☁ ✓'; setTimeout(()=>lbl.style.display='none',1200); }
+  }catch(e){
+    if(lbl){ lbl.textContent='☁ sin conexión'; setTimeout(()=>lbl.style.display='none',2000); }
+  }
+}
+
+async function fbLoad(uid){
+  if(!FB_URL || FB_URL.includes('TU-PROYECTO')) return null;
+  try{
+    const r = await fetch(`${FB_URL}/teconozco/${uid}.json`);
+    if(!r.ok) return null;
+    const d = await r.json();
+    return (d && d.people) ? d : null;
+  }catch(e){ return null; }
+}
+
+function showImportModal(){
+  document.getElementById('import-modal').style.display='flex';
+}
+
+async function doImport(){
+  const code = document.getElementById('import-code-inp').value.trim();
+  const msg  = document.getElementById('import-msg');
+  if(!code){ msg.textContent='Ingresá un código.'; return; }
+  msg.textContent='Buscando tus datos…';
+  const data = await fbLoad(code);
+  if(data){
+    localStorage.setItem(SK_UID, code);
+    people     = data.people     || [];
+    categories = data.categories || {...DEFAULT_CATS};
+    persistLocal();
+    document.getElementById('import-modal').style.display='none';
+    goList();
+  } else {
+    msg.textContent='❌ No se encontraron datos con ese código.';
+  }
+}
+
 // ── State ──────────────────────────────────────────────
 const STORAGE_KEY = 'tc-people';
 const CAT_KEY     = 'tc-cats';
@@ -66,16 +147,20 @@ let selected   = null;
 let search     = '';
 let newCat     = { name:'', icon:'🌀', color:'#a08db5' };
 
-function persist(){
+function persistLocal(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(people));
   localStorage.setItem(CAT_KEY,     JSON.stringify(categories));
-  const lbl = document.getElementById('saving-lbl');
-  lbl.style.display='inline';
-  setTimeout(()=>lbl.style.display='none', 900);
 }
 
-const genId = ()=>Math.random().toString(36).slice(2,10);
-const fmtDate = iso=>new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+function persist(){
+  persistLocal();
+  const lbl = document.getElementById('saving-lbl');
+  if(lbl){ lbl.style.display='inline'; setTimeout(()=>lbl.style.display='none', 900); }
+  fbSave({ people, categories }); // sync a Firebase en background
+}
+
+const genId    = ()=>Math.random().toString(36).slice(2,10);
+const fmtDate  = iso=>new Date(iso).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
 const catIcon  = k=>( categories[k]||DEFAULT_CATS['otro'] ).icon;
 const catColor = k=>( categories[k]||DEFAULT_CATS['otro'] ).color;
 
@@ -89,6 +174,7 @@ function render(){
   if(view==='form')   renderForm(wrap);
   if(view==='detail') renderDetail(wrap);
   if(view==='cats')   renderCats(wrap);
+  if(view==='sync')   renderSync(wrap);
 }
 
 function goList(){ view='list'; selected=null; search=''; render(); }
@@ -100,8 +186,12 @@ function renderList(wrap){
     p.name.toLowerCase().includes(search.toLowerCase())||
     p.place.toLowerCase().includes(search.toLowerCase())
   );
-
+  const fbOk = !FB_URL.includes('TU-PROYECTO');
   wrap.innerHTML=`
+    ${!fbOk?`<div style="background:#fff8f0;border:1px solid #f0d0b0;border-radius:4px;padding:10px 14px;margin-bottom:16px;font-size:.82rem;color:#8b6a3e;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <span>⚠️ Sin sincronización — los datos solo se guardan en este dispositivo.</span>
+      <button onclick="goView('sync')" style="background:none;border:none;color:#8b6a3e;cursor:pointer;text-decoration:underline;font-family:'Lora',serif;font-size:.8rem;white-space:nowrap">Configurar →</button>
+    </div>`:''}
     <div style="display:flex;gap:10px;margin-bottom:24px">
       <input id="srch" class="inp" placeholder="Buscar por nombre o lugar…" value="${esc(search)}" style="flex:1"/>
       <button class="bp" onclick="goView('form')" style="white-space:nowrap">+ Nueva</button>
@@ -118,6 +208,7 @@ function renderList(wrap){
         ${people.length===0?'Tu memoria social está esperando':'Sin resultados'}
       </div>
       <div style="font-size:.9rem">${people.length===0?'Registrá la primera persona que querés recordar':'Probá con otro nombre o lugar'}</div>
+      ${people.length===0?`<button onclick="showImportModal()" style="margin-top:20px;background:none;border:none;color:#8b6a3e;cursor:pointer;font-size:.85rem;text-decoration:underline;font-family:'Lora',serif">¿Ya tenés datos en otro dispositivo?</button>`:''}
     </div>`;
     return;
   }
@@ -338,12 +429,59 @@ function deleteCat(key){
   persist(); renderCats(document.getElementById('wrap'));
 }
 
+// ── SYNC PAGE ──────────────────────────────────────────
+function renderSync(wrap){
+  const uid = getUID();
+  const fbOk = !FB_URL.includes('TU-PROYECTO');
+  wrap.innerHTML=`
+    <button class="back-btn" onclick="goList()">← Volver</button>
+    <div style="font-family:'Playfair Display',serif;font-size:1.6rem;font-style:italic;margin-bottom:4px">Sincronización</div>
+    <div style="font-size:.88rem;color:#9a8878;margin-bottom:24px">Accedé a tus datos desde cualquier dispositivo.</div>
+
+    <div style="background:#faf7f2;border:1.5px solid #d6cfc4;border-radius:4px;padding:20px;margin-bottom:16px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:10px">Estado</div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:.9rem;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${fbOk?'#7a9e8e':'#c4846a'};display:inline-block;"></span>
+        ${fbOk?'Firebase conectado — tus datos se sincronizan automáticamente.':'Firebase no configurado — los datos solo viven en este dispositivo.'}
+      </div>
+    </div>
+
+    <div style="background:#faf7f2;border:1.5px solid #d6cfc4;border-radius:4px;padding:20px;margin-bottom:16px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:10px">Tu código de sincronización</div>
+      <div style="background:#f0ebe0;padding:12px 14px;border-radius:4px;font-family:monospace;font-size:.85rem;word-break:break-all;color:#5a4a3a;margin-bottom:10px">${uid}</div>
+      <div style="font-size:.8rem;color:#9a8878;margin-bottom:14px;line-height:1.5">Copiá este código para acceder a tus datos desde otro dispositivo. Es tu "contraseña" personal de teconozco.</div>
+      <button class="bp" onclick="navigator.clipboard.writeText('${uid}').then(()=>alert('✅ Código copiado'))">Copiar código</button>
+    </div>
+
+    <div style="background:#faf7f2;border:1.5px solid #d6cfc4;border-radius:4px;padding:20px;margin-bottom:24px">
+      <div style="font-size:.78rem;letter-spacing:1px;color:#7a6a5a;text-transform:uppercase;margin-bottom:10px">Importar desde otro dispositivo</div>
+      <div style="font-size:.8rem;color:#9a8878;margin-bottom:12px">Si ya tenés teconozco en otro dispositivo, ingresá tu código para traer todos tus datos acá.</div>
+      <button class="bg" onclick="showImportModal()" style="width:100%">Ingresar mi código →</button>
+    </div>
+
+    <button onclick="if(confirm('¿Borrar todos los datos de teconozco? No se puede deshacer.')){localStorage.removeItem('${STORAGE_KEY}');localStorage.removeItem('${CAT_KEY}');localStorage.removeItem('${SK_UID}');location.reload();}" style="background:none;border:none;color:#c4846a;cursor:pointer;font-size:.82rem;text-decoration:underline;font-family:'Lora',serif;display:block;text-align:center;width:100%;">Borrar todos los datos</button>
+  `;
+}
+
 // ── Helpers ──────────────────────────────────────────
 function esc(s){ const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 function cap(s){ return s.charAt(0).toUpperCase()+s.slice(1); }
 
-// ── Init ────────────────────────────────────────────
-render();
+// ── Init (con Firebase sync) ────────────────────────────────────────────
+async function init(){
+  // Si no hay datos locales, intentar traer de Firebase
+  if(!people.length && !FB_URL.includes('TU-PROYECTO')){
+    const fbData = await fbLoad(getUID());
+    if(fbData){
+      people     = fbData.people     || [];
+      categories = fbData.categories || {...DEFAULT_CATS};
+      persistLocal();
+    }
+  }
+  render();
+}
+
+init();
 </script>
 </body>
 </html>
